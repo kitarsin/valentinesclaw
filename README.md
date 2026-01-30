@@ -1,2 +1,2 @@
 # valentinesclaw
-a valentines themed web game
+This is totally not rigged valentines claw machine game I made for someone
