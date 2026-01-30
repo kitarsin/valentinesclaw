@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Valentine's Claw Machine</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        /* --- CSS STYLES --- */
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0b0510;
+            color: white;
+            font-family: 'Courier New', Courier, monospace;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            touch-action: none;
+            /* Subtle grid background */
+            background-image: 
+                linear-gradient(rgba(255, 0, 222, 0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 0, 222, 0.1) 1px, transparent 1px);
+            background-size: 30px 30px;
+        }
+
+        /* The Machine Cabinet (Container) */
+        #machine-wrapper {
+            width: 100%;
+            max-width: 420px;
+            height: 95vh;
+            max-height: 800px;
+            background: #150825;
+            border: 4px solid #ff00de;
+            border-radius: 15px;
+            box-shadow: 0 0 30px rgba(255, 0, 222, 0.4), inset 0 0 50px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Arcade Marquee Header */
+        #marquee {
+            background: linear-gradient(90deg, #ff00de, #990085);
+            color: #fff;
+            text-align: center;
+            padding: 15px;
+            font-family: 'Press Start 2P', cursive; /* Arcade Font */
+            font-size: 1rem;
+            border-bottom: 4px solid #fff;
+            text-shadow: 3px 3px 0px #000;
+            z-index: 10;
+        }
+
+        /* The Physics Canvas Area */
+        #game-container {
+            position: relative;
+            flex-grow: 1;
+            width: 100%;
+            overflow: hidden;
+            background: rgba(0,0,0,0.2);
+            cursor: pointer;
+        }
+
+        /* Controls Area */
+        #controls {
+            height: 120px;
+            background: #1a0b2e;
+            display: flex;
+            justify-content: space-evenly;
+            align-items: center;
+            border-top: 4px solid #ff00de;
+            padding-bottom: 10px;
+            box-shadow: inset 0 10px 20px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+
+        .btn {
+            background: #2a1b3d;
+            border: 2px solid #ff00de;
+            border-radius: 50%;
+            width: 65px;
+            height: 65px;
+            color: #ff00de;
+            font-size: 24px;
+            box-shadow: 0 6px 0 #990085;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: transform 0.1s;
+        }
+
+        .btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #990085;
+        }
+
+        .btn-drop {
+            width: 90px;
+            height: 90px;
+            background: #ff00de;
+            border: 2px solid #fff;
+            box-shadow: 0 6px 0 #b800a1;
+            color: #fff;
+            font-weight: bold;
+            font-size: 30px;
+        }
+
+        /* Proposal Modal */
+        #proposal-modal {
+            display: none; /* Hidden by default */
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(17, 0, 28, 0.95);
+            z-index: 100;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            animation: fadeIn 0.5s;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .modal-content {
+            position: relative;
+            z-index: 102;
+            padding: 20px;
+        }
+
+        .modal-content h1 {
+            color: #ff00de;
+            font-family: 'Press Start 2P', cursive;
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+            line-height: 1.6;
+            text-shadow: 0 0 10px #ff00de;
+        }
+
+        .proposal-btns {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-top: 20px;
+            height: 60px; /* Context for absolute positioning */
+            position: relative;
+        }
+
+        .p-btn {
+            padding: 15px 30px;
+            font-size: 1rem;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+            font-family: 'Press Start 2P', cursive;
+            text-transform: uppercase;
+        }
+
+        .yes-btn { 
+            background: #00ffea; 
+            color: #000; 
+            box-shadow: 0 4px 0 #008f82; 
+        }
+        
+        .no-btn { 
+            background: #444; 
+            color: #888; 
+            box-shadow: 0 4px 0 #222;
+            /* Initially positioned relatively, then absolute on hover */
+        }
+
+        #confetti-canvas {
+            position: absolute; top: 0; left: 0; pointer-events: none; z-index: 101;
+            width: 100%; height: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="machine-wrapper">
+        <div id="marquee">VALENTINE'S CLAW MACHINE</div>
+        
+        <div id="game-container">
+            <canvas id="world"></canvas>
+        </div>
+
+        <div id="controls">
+            <button class="btn" id="btn-left">⬅</button>
+            <button class="btn btn-drop" id="btn-drop">⬇</button>
+            <button class="btn" id="btn-right">➡</button>
+        </div>
+
+        <div id="proposal-modal">
+            <div class="modal-content">
+                <h1 id="win-text">Kuhang kuha mo talaga ako.<br><br>WILL YOU BE MY VALENTINE?</h1>
+                <div class="proposal-btns">
+                    <button class="p-btn yes-btn" id="btn-yes">YES!</button>
+                    <button class="p-btn no-btn" id="btn-no">NO</button>
+                </div>
+            </div>
+            <canvas id="confetti-canvas"></canvas>
+        </div>
+    </div>
+
+    <script>
+    // Wait for the window to fully load so we get correct dimensions
+    window.addEventListener('load', () => {
+
+        // MEEEEEEEEE
+        const meTexture = new Image();
+        meTexture.src = 'me.jpg';
+        
+        // --- CONFIGURATION ---
+        const CLUTTER_EMOJIS = ['👜', '💍', '👠', '📱', '💳', '⌚', '💵'];
+        const HEART_EMOJI = '💖'; 
+        const MAGNETIC_STRENGTH = 0.08; 
+
+        // Get container dimensions dynamically
+        const container = document.getElementById('game-container');
+        const canvas = document.getElementById('world');
+        
+        // Fallback dimensions in case flexbox is being weird
+        const ENGINE_WIDTH = container.clientWidth || 350;
+        const ENGINE_HEIGHT = container.clientHeight || 500;
+
+        // Matter.js Setup
+        const Engine = Matter.Engine,
+              Render = Matter.Render,
+              Runner = Matter.Runner,
+              Bodies = Matter.Bodies,
+              Composite = Matter.Composite,
+              Events = Matter.Events,
+              Body = Matter.Body;
+
+        const engine = Engine.create();
+        const world = engine.world;
+
+        const render = Render.create({
+            element: container,
+            canvas: canvas,
+            engine: engine,
+            options: {
+                width: ENGINE_WIDTH,
+                height: ENGINE_HEIGHT,
+                wireframes: false,
+                background: 'transparent'
+            }
+        });
+
+        // --- GAME OBJECTS ---
+
+        // 1. Invisible Walls
+        const wallOpts = { isStatic: true, render: { visible: false } };
+        Composite.add(world, [
+            Bodies.rectangle(ENGINE_WIDTH/2, ENGINE_HEIGHT + 25, ENGINE_WIDTH, 50, wallOpts), // Floor
+            Bodies.rectangle(-25, ENGINE_HEIGHT/2, 50, ENGINE_HEIGHT*2, wallOpts), // Left
+            Bodies.rectangle(ENGINE_WIDTH+25, ENGINE_HEIGHT/2, 50, ENGINE_HEIGHT*2, wallOpts) // Right
+        ]);
+
+        // 2. The Heart (The Prize)
+        const heart = Bodies.circle(ENGINE_WIDTH/2, ENGINE_HEIGHT-60, 42, {
+            restitution: 0.2, 
+            friction: 0.5,
+            density: 0.005,
+            label: "HEART",
+            render: { fillStyle: 'transparent' } 
+        });
+        Composite.add(world, heart);
+
+        // 3. The Clutter
+        // We add them immediately to ensure they exist
+        const clutterBodies = [];
+        for(let i=0; i<40; i++){
+            const emoji = CLUTTER_EMOJIS[Math.floor(Math.random()*CLUTTER_EMOJIS.length)];
+            const x = Math.random()*(ENGINE_WIDTH-60)+30;
+            const y = -Math.random()*600 - 100; // Spawn high up
+            
+            const clutter = Bodies.circle(x, y, 20, {
+                restitution: 0.3, 
+                friction: 0.5,
+                label: emoji, 
+                render: { fillStyle: 'transparent' }
+            });
+            clutterBodies.push(clutter);
+        }
+        Composite.add(world, clutterBodies);
+
+        // 4. The Claw Hub
+        const claw = Bodies.circle(ENGINE_WIDTH/2, 50, 15, {
+            isStatic: true,
+            isSensor: true,
+            label: "CLAW_HUB",
+            render: { fillStyle: 'transparent' }
+        });
+        Composite.add(world, claw);
+
+        // --- GAME LOGIC ---
+        let gameState = 'IDLE'; 
+        let clawXVelocity = 0;
+
+        Events.on(engine, 'beforeUpdate', () => {
+            
+            // 1. Horizontal Movement (Player Controlled)
+            if(gameState === 'IDLE' || gameState === 'MOVING') {
+                Body.translate(claw, { x: clawXVelocity, y: 0 });
+                // Bounds Check
+                if (claw.position.x < 30) Body.setPosition(claw, { x: 30, y: claw.position.y });
+                if (claw.position.x > ENGINE_WIDTH - 30) Body.setPosition(claw, { x: ENGINE_WIDTH - 30, y: claw.position.y });
+            }
+
+            // 2. Dropping Logic (THE "LAST SECOND" RIG)
+            if(gameState === 'DROPPING') {
+                const dropSpeed = 5; // Standard gravity speed
+                
+                // Calculate vertical distance to the heart
+                const distY = heart.position.y - claw.position.y;
+                
+                // "THE SWOOP" CONFIGURATION
+                const triggerZone = 180; // Pixels above heart where the rig activates
+                const snapStrength = 0.15; // 0.05 = lazy drift, 0.3 = instant teleport
+                
+                let moveX = 0;
+
+                // Only apply the rig if we are close to the bottom!
+                if (distY < triggerZone && distY > 0) {
+                    const diffX = heart.position.x - claw.position.x;
+                    // Move 15% of the remaining distance per frame
+                    moveX = diffX * snapStrength; 
+                }
+                
+                Body.translate(claw, { x: moveX, y: dropSpeed });
+
+                // Check depth (Did we reach the bottom?)
+                if(claw.position.y >= heart.position.y - 30) {
+                    gameState = 'GRABBING';
+                    setTimeout(() => gameState = 'LIFTING', 400); 
+                }
+            }
+
+            // 3. Lifting Logic
+            if(gameState === 'LIFTING' || gameState === 'WON') {
+                Body.translate(claw, { x: 0, y: -4 });
+                
+                // Lock Heart to Claw
+                Body.setPosition(heart, { x: claw.position.x, y: claw.position.y + 40 });
+                Body.setVelocity(heart, { x: 0, y: 0 }); 
+
+                if(claw.position.y < 60 && gameState !== 'WON') {
+                    gameState = 'WON';
+                    triggerWin();
+                }
+            }
+        });
+
+        // --- RENDER PIPELINE ---
+        Events.on(render, 'afterRender', () => {
+            const ctx = render.context;
+            const bodies = Composite.allBodies(world);
+
+            // 1. Draw String
+            ctx.beginPath();
+            ctx.moveTo(claw.position.x, 0);
+            ctx.lineTo(claw.position.x, claw.position.y);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            
+            // Force white for Linux emoji support
+            ctx.fillStyle = '#ffffff'; 
+
+            bodies.forEach(b => {
+                if(b.label && (b.label === 'HEART' || CLUTTER_EMOJIS.includes(b.label))) {
+                    ctx.save();
+                    ctx.translate(b.position.x, b.position.y);
+                    ctx.rotate(b.angle);
+                    
+                    // --- IF IT IS THE "ME" TOKEN (HEART) ---
+                    if(b.label === 'HEART') {
+                        // 1. Create Circular Mask
+                        ctx.beginPath();
+                        ctx.arc(0, 0, b.circleRadius, 0, Math.PI * 2);
+                        ctx.clip(); // Anything drawn after this stays inside the circle
+
+                        // 2. Draw Your Photo
+                        try {
+                            // Draw image to fill the circle diameter
+                            ctx.drawImage(meTexture, -b.circleRadius, -b.circleRadius, b.circleRadius * 2, b.circleRadius * 2);
+                        } catch (e) {
+                            // Fallback if image isn't found
+                            ctx.fillText("ME", 0, 0);
+                        }
+                        
+                        // 3. Draw a Neon Border Ring around your picture
+                        ctx.lineWidth = 4;
+                        ctx.strokeStyle = '#ff00de';
+                        ctx.stroke();
+                        
+                    } 
+                    // --- IF IT IS JUST CLUTTER ---
+                    else {
+                        // (Keep the existing clutter rendering logic)
+                        ctx.beginPath();
+                        ctx.arc(0, 0, b.circleRadius, 0, Math.PI * 2);
+                        ctx.fillStyle = 'rgba(255,255,255,0.05)';
+                        ctx.fill();
+                        ctx.fillStyle = '#ffffff'; 
+                        
+                        const fontSize = b.circleRadius * 1.8;
+                        ctx.font = `${fontSize}px 'Noto Color Emoji', 'Apple Color Emoji', Arial, sans-serif`;
+                        
+                        ctx.shadowBlur = 0; 
+                        ctx.fillText(b.label, 0, 4);
+                    }
+                    ctx.restore();
+                }
+            });
+
+            // 3. Draw Claw
+            const cx = claw.position.x;
+            const cy = claw.position.y;
+            ctx.lineCap = "round";
+            ctx.lineWidth = 5;
+            ctx.strokeStyle = "#00ffea";
+            ctx.shadowColor = "#00ffea";
+            ctx.shadowBlur = 15;
+
+            const isOpen = (gameState === 'IDLE' || gameState === 'MOVING' || gameState === 'DROPPING');
+            const spread = isOpen ? 35 : 10;
+
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.quadraticCurveTo(cx - 30, cy + 20, cx - spread, cy + 50);
+            ctx.moveTo(cx, cy);
+            ctx.quadraticCurveTo(cx + 30, cy + 20, cx + spread, cy + 50);
+            ctx.stroke();
+
+            ctx.fillStyle = "#fff";
+            ctx.beginPath();
+            ctx.arc(cx, cy, 8, 0, Math.PI*2);
+            ctx.fill();
+        });
+
+        function triggerWin() {
+            setTimeout(() => {
+                document.getElementById('proposal-modal').style.display = 'flex';
+            }, 500);
+        }
+
+        // --- CONTROLS ---
+        const btnLeft = document.getElementById('btn-left');
+        const btnRight = document.getElementById('btn-right');
+        const btnDrop = document.getElementById('btn-drop');
+
+        const moveL = () => { if(gameState==='IDLE') { gameState='MOVING'; clawXVelocity = -3; }};
+        const moveR = () => { if(gameState==='IDLE') { gameState='MOVING'; clawXVelocity = 3; }};
+        const stop = () => { if(gameState==='MOVING') { gameState='IDLE'; clawXVelocity = 0; }};
+        const drop = () => { if(gameState==='IDLE' || gameState==='MOVING') gameState = 'DROPPING'; };
+
+        btnLeft.addEventListener('mousedown', moveL);
+        btnLeft.addEventListener('touchstart', (e)=>{e.preventDefault(); moveL()});
+        
+        btnRight.addEventListener('mousedown', moveR);
+        btnRight.addEventListener('touchstart', (e)=>{e.preventDefault(); moveR()});
+        
+        window.addEventListener('mouseup', stop);
+        window.addEventListener('touchend', stop);
+
+        btnDrop.addEventListener('click', drop);
+        btnDrop.addEventListener('touchstart', (e)=>{e.preventDefault(); drop()});
+
+        // --- MODAL ---
+        const btnNo = document.getElementById('btn-no');
+        const btnYes = document.getElementById('btn-yes');
+        const confettiC = document.getElementById('confetti-canvas');
+
+        function dodge(e) {
+            e.preventDefault();
+            
+            // 1. CONFIGURATION
+            const range = 400; // How far it can jump (increased for bigger screen)
+            const minSafeDist = 150; // Minimum distance away from the "Yes" button
+            
+            let x, y, dist;
+            
+            // 2. REJECTION SAMPLING (The "Smart" Logic)
+            // Keep picking random spots until we find one that is far enough away
+            do {
+                x = (Math.random() - 0.5) * range;
+                y = (Math.random() - 0.5) * range;
+                
+                // Calculate distance from the center (where the Yes button lives)
+                dist = Math.sqrt(x*x + y*y);
+            } while (dist < minSafeDist); // If too close, try again
+
+            // 3. APPLY MOVEMENT
+            btnNo.style.position = 'absolute';
+            btnNo.style.transform = `translate(${x}px, ${y}px)`;
+            
+            // Make it faster (0.1s) so it feels erratic/impossible
+            btnNo.style.transition = 'transform 0.1s cubic-bezier(0.075, 0.82, 0.165, 1)';
+        }
+
+        // Add multiple triggers so it's impossible to touch
+        btnNo.addEventListener('mouseover', dodge);
+        btnNo.addEventListener('mousedown', dodge); // Catches fast clicks
+        btnNo.addEventListener('touchstart', dodge);
+        btnNo.addEventListener('click', (e) => { e.preventDefault(); dodge(e); });
+
+        btnYes.addEventListener('click', () => {
+            // Update Text
+            const winText = document.getElementById('win-text');
+            winText.innerHTML = "IT'S A DATE! 💖<br><br>Send me a screenshot!";
+            winText.style.fontSize = "1.5rem"; // Make it pop
+            
+            document.querySelector('.proposal-btns').style.display = 'none';
+
+            // Confetti Explosion
+            const ctx = confettiC.getContext('2d');
+            confettiC.width = confettiC.offsetWidth;
+            confettiC.height = confettiC.offsetHeight;
+            
+            let particles = [];
+            for(let i=0; i<200; i++) { // More particles
+                particles.push({
+                    x: confettiC.width/2, y: confettiC.height/2,
+                    vx: (Math.random()-0.5)*20, vy: (Math.random()-0.5)*20 - 5,
+                    c: `hsl(${Math.random()*360}, 100%, 50%)`,
+                    size: Math.random()*8+4
+                });
+            }
+
+            function animateConfetti() {
+                ctx.clearRect(0,0,confettiC.width, confettiC.height);
+                particles.forEach(p => {
+                    p.x += p.vx; p.y += p.vy; p.vy += 0.3; // Gravity
+                    p.size *= 0.96; // Shrink slowly
+                    ctx.fillStyle = p.c;
+                    ctx.fillRect(p.x, p.y, p.size, p.size);
+                });
+                requestAnimationFrame(animateConfetti);
+            }
+            animateConfetti();
+        });
+
+        // Start
+        Render.run(render);
+        const runner = Runner.create();
+        Runner.run(runner, engine);
+    });
+</script>
+</body>
+</html>
